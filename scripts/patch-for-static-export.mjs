@@ -114,3 +114,49 @@ fs.writeFileSync(profileFile, profileContent);
 console.log("Patched: author-profile.ts");
 
 console.log("All patches applied successfully.");
+
+// ── category/[category]/page.tsx ──────────────────────────────────────────────
+// Remove searchParams usage (dynamic, incompatible with static export).
+// Pagination is handled via /category/[category]/page/[page] route.
+
+const categoryPageFile = path.join(root, "src/app/category/[category]/page.tsx");
+let categoryContent = fs.readFileSync(categoryPageFile, "utf-8");
+
+// Remove searchParams from interface
+categoryContent = categoryContent.replace(
+  /\s*searchParams: Promise<\{ page\?: string \}>;/g,
+  ""
+);
+
+// Remove searchParams from generateMetadata params
+categoryContent = categoryContent.replace(
+  /\{\s*\n\s*params,\s*\n\s*searchParams,\s*\n\s*\}: CategoryPageProps\): Promise<Metadata>/,
+  "{ params }: { params: Promise<{ category: string }> }): Promise<Metadata>"
+);
+
+// Replace `const query = await searchParams;` and `const queryPage = ...` in generateMetadata
+categoryContent = categoryContent.replace(
+  /const query = await searchParams;\s*\n\s*const normalizedCategory = normalizeCategory\(category\);\s*\n\s*const queryPage = parsePositivePage\(query\.page\);/,
+  "const normalizedCategory = normalizeCategory(category);\n  const queryPage = 1;"
+);
+
+// Remove searchParams from CategoryPage function params
+categoryContent = categoryContent.replace(
+  /\{\s*\n\s*params,\s*\n\s*searchParams,\s*\n\s*\}: CategoryPageProps\)/,
+  "{ params }: { params: Promise<{ category: string }> })"
+);
+
+// Replace `const query = await searchParams;` and `const queryPage = ...` in CategoryPage
+categoryContent = categoryContent.replace(
+  /const query = await searchParams;\s*\n\s*const normalizedCategory = normalizeCategory\(category\);[\s\S]*?const queryPage = parsePositivePage\(query\.page\);/,
+  "const normalizedCategory = normalizeCategory(category);\n  const queryPage = 1;"
+);
+
+// Remove redirect checks that used query.page
+categoryContent = categoryContent.replace(
+  /\n\s*if \(query\.page && queryPage <= 1\) \{\s*\n\s*permanentRedirect\(categoryUrl\(normalizedCategory\)\);\s*\n\s*\}/g,
+  ""
+);
+
+fs.writeFileSync(categoryPageFile, categoryContent);
+console.log("Patched: category/[category]/page.tsx");

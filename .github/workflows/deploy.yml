@@ -33,7 +33,10 @@ jobs:
         run: |
           pnpm search:index
           node scripts/patch-for-static-export.mjs
-          rm -rf src/app/api
+          # Remove route handlers incompatible with static export
+          rm -rf src/app/api src/app/feed src/app/feed.xml src/app/rss src/app/rss.xml
+          # Mark metadata routes as static
+          sed -i '1s/^/export const dynamic = "force-static";\n/' src/app/robots.ts src/app/sitemap.ts
           npx next build
         env:
           STATIC_EXPORT: '1'

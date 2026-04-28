@@ -30,19 +30,24 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: pnpm build
+        run: |
+          pnpm search:index
+          rm -rf src/app/api
+          npx next build
+        env:
+          STATIC_EXPORT: '1'
 
       - name: Verify build output
         run: |
-          [ -d "dist/client" ] || (echo "ERROR: dist/client not found" && exit 1)
-          echo "Size: $(du -sh dist/client/)"
-          echo "Files: $(find dist/client -type f | wc -l)"
+          [ -d "out" ] || (echo "ERROR: out/ not found" && exit 1)
+          echo "Size: $(du -sh out/)"
+          echo "Files: $(find out -type f | wc -l)"
 
       - name: Deploy via rsync
         uses: burnett01/rsync-deployments@7.0.1
         with:
           switches: -avz --delete --exclude='.DS_Store' --exclude='*.map'
-          path: dist/client/
+          path: out/
           remote_path: /opt/blog/html/
           remote_host: ${{ secrets.VPS_HOST }}
           remote_port: ${{ secrets.VPS_PORT }}

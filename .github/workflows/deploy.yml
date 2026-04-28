@@ -32,6 +32,7 @@ jobs:
       - name: Build
         run: |
           pnpm search:index
+          node scripts/patch-for-static-export.mjs
           rm -rf src/app/api
           npx next build
         env:

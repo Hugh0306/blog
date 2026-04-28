@@ -160,3 +160,46 @@ categoryContent = categoryContent.replace(
 
 fs.writeFileSync(categoryPageFile, categoryContent);
 console.log("Patched: category/[category]/page.tsx");
+
+// ── page.tsx (homepage) ───────────────────────────────────────────────────────
+// Remove searchParams; homepage always shows first page in static export.
+
+const homePageFile = path.join(root, "src/app/page.tsx");
+const homePageContent = `import type { Metadata } from "next";
+import { AIChatTrigger } from "@/components/ai-chat-box";
+import { ArticleList } from "@/components/article-list";
+import { CategoryNav } from "@/components/category-nav";
+import { PaginationNav } from "@/components/pagination-nav";
+import { RouteTransitionComplete } from "@/components/route-transition-complete";
+import { getPostListing } from "@/lib/content/listings";
+import { siteConfig } from "@/lib/site-config";
+
+export const dynamic = "force-static";
+
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    alternates: { canonical: siteConfig.siteUrl },
+  };
+}
+
+export default async function Home() {
+  const listing = await getPostListing({});
+
+  return (
+    <main className="pb-8 pt-2">
+      <RouteTransitionComplete />
+      <CategoryNav />
+      <AIChatTrigger />
+      <ArticleList
+        posts={listing.visiblePosts}
+        hitsMap={listing.hitsMap}
+        hitsLoading={listing.hitsLoading}
+      />
+      <PaginationNav page={listing.page} pageTotal={listing.pageTotal} />
+    </main>
+  );
+}
+`;
+
+fs.writeFileSync(homePageFile, homePageContent);
+console.log("Patched: page.tsx (homepage)");

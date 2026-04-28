@@ -1,7 +1,7 @@
 /**
  * Pre-build patch for VPS static export.
- * Replaces Vite-specific import.meta.glob calls with Node.js fs equivalents.
- * Only runs in CI when STATIC_EXPORT=1.
+ * Replaces Vite-specific import.meta.glob calls with Node.js equivalents.
+ * Safe strategy: avoid require/import fs in files that are used by client components.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -11,27 +11,29 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 
 // ── posts.ts ──────────────────────────────────────────────────────────────────
+// Server-only file, safe to use node:fs
 
 const postsFile = path.join(root, "src/lib/content/posts.ts");
 let postsContent = fs.readFileSync(postsFile, "utf-8");
+
+// Add node:fs imports at the top (after first line)
+const postsNodeImports = `import { readFileSync as _readFileSync, readdirSync as _readdirSync } from "node:fs";
+import { join as _join, relative as _relative } from "node:path";
+`;
 
 const postsGlobPattern =
   /const markdownFiles = import\.meta\.glob\([^;]+?\);/s;
 
 const postsReplacement = `const markdownFiles: Record<string, string> = (() => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const _fs = require("fs") as typeof import("fs");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const _path = require("path") as typeof import("path");
-  const baseDir = _path.join(process.cwd(), "content", "posts");
+  const baseDir = _join(process.cwd(), "content", "posts");
   const result: Record<string, string> = {};
   function walk(dir: string) {
-    for (const e of _fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = _path.join(dir, e.name);
+    for (const e of _readdirSync(dir, { withFileTypes: true })) {
+      const full = _join(dir, e.name);
       if (e.isDirectory()) { walk(full); }
       else if (e.name.endsWith(".md")) {
-        const rel = _path.relative(baseDir, full).replace(/\\\\/g, "/");
-        result["/content/posts/" + rel] = _fs.readFileSync(full, "utf-8");
+        const rel = _relative(baseDir, full).replace(/\\\\/g, "/");
+        result["/content/posts/" + rel] = _readFileSync(full, "utf-8");
       }
     }
   }
@@ -43,11 +45,18 @@ if (!postsGlobPattern.test(postsContent)) {
   console.error("ERROR: could not find import.meta.glob in posts.ts");
   process.exit(1);
 }
+
+// Add imports after the first line
+const postsLines = postsContent.split("\n");
+postsLines.splice(0, 0, postsNodeImports.trimEnd());
+postsContent = postsLines.join("\n");
 postsContent = postsContent.replace(postsGlobPattern, postsReplacement);
 fs.writeFileSync(postsFile, postsContent);
 console.log("Patched: posts.ts");
 
 // ── utils.ts ──────────────────────────────────────────────────────────────────
+// Used by client components — cannot use node:fs.
+// Replace glob with empty object; image-dimensions cache will be skipped gracefully.
 
 const utilsFile = path.join(root, "src/lib/content/utils.ts");
 let utilsContent = fs.readFileSync(utilsFile, "utf-8");
@@ -55,18 +64,8 @@ let utilsContent = fs.readFileSync(utilsFile, "utf-8");
 const utilsGlobPattern =
   /const cacheFiles = import\.meta\.glob\([^;]+?\);/s;
 
-const utilsReplacement = `const cacheFiles: Record<string, unknown> = (() => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const _fs = require("fs") as typeof import("fs");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const _path = require("path") as typeof import("path");
-  const p = _path.join(process.cwd(), "data", "image-dimensions.json");
-  const r: Record<string, unknown> = {};
-  if (_fs.existsSync(p)) {
-    r["/data/image-dimensions.json"] = JSON.parse(_fs.readFileSync(p, "utf-8"));
-  }
-  return r;
-})();`;
+const utilsReplacement =
+  `const cacheFiles: Record<string, unknown> = {}; // static export: image-dimensions cache skipped`;
 
 if (!utilsGlobPattern.test(utilsContent)) {
   console.error("ERROR: could not find import.meta.glob in utils.ts");
@@ -77,26 +76,25 @@ fs.writeFileSync(utilsFile, utilsContent);
 console.log("Patched: utils.ts");
 
 // ── author-profile.ts ─────────────────────────────────────────────────────────
+// Server-only file, safe to use node:fs
 
 const profileFile = path.join(root, "src/lib/content/author-profile.ts");
 let profileContent = fs.readFileSync(profileFile, "utf-8");
 
+const profileNodeImports = `import { readFileSync as _pReadFileSync, readdirSync as _pReaddirSync, existsSync as _pExistsSync } from "node:fs";
+import { join as _pJoin } from "node:path";
+`;
+
 const profileGlobPattern =
-  /const reportModules = import\.meta\.glob\([^;]+?\) as Record<string, unknown>;/s;
+  /\/\/ eslint-disable-next-line @typescript-eslint\/ban-ts-comment\n\/\/ @ts-ignore Vite-specific API\nconst reportModules = import\.meta\.glob\([^;]+?\) as Record<string, unknown>;/s;
 
 const profileReplacement = `const reportModules: Record<string, unknown> = (() => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const _fs = require("fs") as typeof import("fs");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const _path = require("path") as typeof import("path");
-  const dir = _path.join(process.cwd(), "data", "reports");
+  const dir = _pJoin(process.cwd(), "data", "reports");
   const result: Record<string, unknown> = {};
-  if (_fs.existsSync(dir)) {
-    for (const f of _fs.readdirSync(dir)) {
+  if (_pExistsSync(dir)) {
+    for (const f of _pReaddirSync(dir)) {
       if (f.endsWith(".json")) {
-        result["/data/reports/" + f] = JSON.parse(
-          _fs.readFileSync(_path.join(dir, f), "utf-8")
-        );
+        result["/data/reports/" + f] = JSON.parse(_pReadFileSync(_pJoin(dir, f), "utf-8"));
       }
     }
   }
@@ -107,6 +105,10 @@ if (!profileGlobPattern.test(profileContent)) {
   console.error("ERROR: could not find import.meta.glob in author-profile.ts");
   process.exit(1);
 }
+
+const profileLines = profileContent.split("\n");
+profileLines.splice(0, 0, profileNodeImports.trimEnd());
+profileContent = profileLines.join("\n");
 profileContent = profileContent.replace(profileGlobPattern, profileReplacement);
 fs.writeFileSync(profileFile, profileContent);
 console.log("Patched: author-profile.ts");

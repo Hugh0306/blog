@@ -4,6 +4,8 @@ const isStaticExport = process.env.STATIC_EXPORT === "1";
 const nextConfig = {
   transpilePackages: ["@luoleiorg/search-core"],
   ...(isStaticExport && { output: "export" }),
+  ...(isStaticExport && { typescript: { ignoreBuildErrors: true } }),
+  ...(isStaticExport && { eslint: { ignoreDuringBuilds: true } }),
   images: isStaticExport
     ? { unoptimized: true }
     : {
